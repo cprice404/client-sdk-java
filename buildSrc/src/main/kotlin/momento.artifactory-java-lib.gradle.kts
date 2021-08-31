@@ -9,7 +9,6 @@ repositories {
 }
 
 configure<JavaPluginExtension> {
-// java {
     sourceCompatibility = JavaVersion.VERSION_1_8
 }
 
@@ -24,12 +23,12 @@ configure<PublishingExtension> {
 configure<org.jfrog.gradle.plugin.artifactory.dsl.ArtifactoryPluginConvention> {
     clientConfig.isIncludeEnvVars = true
 
-    setContextUrl("https://momentochrissandbox.jfrog.io/artifactory")
+    setContextUrl("https://momento.jfrog.io/artifactory")
     publish {
         repository {
             val artifactoryUsername = System.getenv("ARTIFACTORY_USERNAME")
             val artifactoryPassword = System.getenv("ARTIFACTORY_PASSWORD")
-            setRepoKey("chris-sandbox-gradle-local") // The Artifactory repository key to publish to
+            setRepoKey("maven-local") // The Artifactory repository key to publish to
             setUsername(artifactoryUsername)
             setPassword(artifactoryPassword)
         }

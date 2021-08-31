@@ -2,35 +2,35 @@ import com.google.protobuf.gradle.*
 
 plugins {
     id("com.google.protobuf") version "0.8.16"
-    id("java-library")
-    `maven-publish`
-    idea
+//    id("java-library")
+//    `maven-publish`
+//    idea
 
-//    id("momento-artifactory-publish-repo")
+    id("artifactory-java-lib")
 }
+//
+//java {
+//    sourceCompatibility = JavaVersion.VERSION_1_8
+//}
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-}
-
-group = "client-sdk-java"
-version = findProperty("version") as String
+//group = "client-sdk-java"
+//version = findProperty("version") as String
 
 // var awsAccessKeyId = System.getenv("AWS_ACCESS_KEY_ID") ?: findProperty("aws_access_key_id") as String? ?: ""
 // var awsSecretAccessKey = System.getenv("AWS_SECRET_ACCESS_KEY") ?: findProperty("aws_secret_access_key") as String? ?: ""
 
-repositories {
-    // Use Maven Central for resolving dependencies.
-    mavenCentral()
-//    maven {
-//        name = "messages"
-//        url = uri("s3://artifact-814370081888-us-west-2/client-sdk-java/release")
-//        credentials(AwsCredentials::class) {
-//            accessKey = awsAccessKeyId
-//            secretKey = awsSecretAccessKey
-//        }
-//    }
-}
+//repositories {
+//    // Use Maven Central for resolving dependencies.
+//    mavenCentral()
+////    maven {
+////        name = "messages"
+////        url = uri("s3://artifact-814370081888-us-west-2/client-sdk-java/release")
+////        credentials(AwsCredentials::class) {
+////            accessKey = awsAccessKeyId
+////            secretKey = awsSecretAccessKey
+////        }
+////    }
+//}
 
 dependencies {
 
@@ -68,21 +68,23 @@ protobuf {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            from(components["java"])
-        }
-    }
+//publishing {
+////    publications {
+////        create<MavenPublication>("mavenJava") {
+////            from(components["java"])
+////        }
+////    }
 //
-//    repositories {
-//        maven {
-//            url = uri("s3://artifact-814370081888-us-west-2/client-sdk-java/release")
-//            // we are using custom creds here so we don't accidentally publish
-//            credentials(AwsCredentials::class) {
-//                accessKey = awsAccessKeyId
-//                secretKey = awsSecretAccessKey
-//            }
-//        }
-//    }
-}
+//
+////
+////    repositories {
+////        maven {
+////            url = uri("s3://artifact-814370081888-us-west-2/client-sdk-java/release")
+////            // we are using custom creds here so we don't accidentally publish
+////            credentials(AwsCredentials::class) {
+////                accessKey = awsAccessKeyId
+////                secretKey = awsSecretAccessKey
+////            }
+////        }
+////    }
+//}

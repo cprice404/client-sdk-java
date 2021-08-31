@@ -32,13 +32,13 @@ repositories {
 
 dependencies {
 //    implementation(kotlin("jvm"))
-    implementation(gradleApi())
-    implementation(gradleKotlinDsl())
+//    implementation(gradleApi())
+//    implementation(gradleKotlinDsl())
     implementation(kotlin("gradle-plugin"))
     implementation("org.jfrog.buildinfo:build-info-extractor-gradle:4.24.16")
 }
 
 plugins {
-    kotlin("jvm") version "1.5.30"
+    kotlin("jvm") version "1.5.21"
     `kotlin-dsl`
 }

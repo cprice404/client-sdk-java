@@ -8,7 +8,8 @@ allprojects {
     //  to determine the artifact group ID and version that
     //  customers will consume.
     group = "momento.sandbox"
-    version = findProperty("version") as String
+//    version = findProperty("version") as String
+    version = "0.22.0-SNAPSHOT"
 }
 
 // Spotless plugin used for Java Formatting needs the buildscript with repository

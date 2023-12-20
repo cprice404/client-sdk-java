@@ -2,13 +2,17 @@ package momento.client.example;
 
 import com.google.common.util.concurrent.RateLimiter;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
 import momento.sdk.CacheClient;
 import momento.sdk.auth.CredentialProvider;
 import momento.sdk.auth.EnvVarCredentialProvider;
@@ -25,11 +29,22 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("UnstableApiUsage")
 public class LoadGenerator {
   private static final String API_KEY_ENV_VAR = "MOMENTO_API_KEY";
-  private static final Duration DEFAULT_ITEM_TTL = Duration.ofSeconds(60);
+  private static final Duration DEFAULT_ITEM_TTL = Duration.ofMinutes(60);
   private static final String CACHE_NAME = "java-loadgen";
   private static final Logger logger = LoggerFactory.getLogger(LoadGenerator.class);
 
+  private static final int NUM_HOT_KEYS = 3;
+  private static final int NUM_REGULAR_KEYS = 100_000;
+  private static final int PERCENT_OF_OPERATIONS_THAT_SHOULD_CHOOSE_A_HOT_KEY = 50;
+  private static final int PERCENT_OF_OPERATIONS_THAT_SHOULD_EXECUTE_A_SET = 1;
+
+
+  private final CompletableFuture<Void> stillExecutingFuture = new CompletableFuture<>();
   private final ScheduledExecutorService executorService;
+
+  private final List<String> hotKeys = IntStream.range(1, NUM_HOT_KEYS + 1).mapToObj(i -> "hotKey" + i).toList();
+  private final Map<String, AtomicInteger> hotKeyReadCounts = hotKeys.stream().collect(Collectors.toMap(k -> k, k -> new AtomicInteger(0)));
+  private final AtomicInteger otherKeyReadCount = new AtomicInteger(0);
   private final RateLimiter rateLimiter;
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
@@ -68,10 +83,45 @@ public class LoadGenerator {
     client.createCache(CACHE_NAME);
 
     executorService = Executors.newScheduledThreadPool(maxConcurrentRequests);
+
     rateLimiter = RateLimiter.create(requestsPerSecond);
+
     this.requestsPerSecond = requestsPerSecond;
 
     startTime = System.currentTimeMillis();
+
+    try {
+      run(statsInterval, maxConcurrentRequests, warmupTime);
+    } catch (Exception e) {
+      logger.error("Error running load generator", e);
+      stillExecutingFuture.completeExceptionally(e);
+      try {
+        logger.error("Shutting down executor service");
+        executorService.shutdownNow();
+        logger.error("Shutting down scheduler");
+        scheduler.shutdownNow();
+        logger.error("Calling main shutdown method");
+        shutdown();
+        logger.error("Shutdown complete");
+      } catch (InterruptedException ex) {
+        throw new RuntimeException(ex);
+      }
+    }
+  }
+
+    public void await(long millis) {
+      try {
+        stillExecutingFuture.get(millis, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException | ExecutionException e) {
+        logger.error("Error occurred while waiting for run to complete", e);
+      } catch (TimeoutException e) {
+          logger.info("Run execution time completed");
+      }
+    }
+
+  private void run(int statsInterval, int maxConcurrentRequests, int warmupTime) {
+    List<ScheduledFuture<SetResponse>> initializeKeyFutures = initializeKeys();
+    awaitFutures(initializeKeyFutures);
 
     // Schedule initial tasks
     for (int i = 0; i < maxConcurrentRequests; ++i) {
@@ -91,30 +141,99 @@ public class LoadGenerator {
     scheduler.scheduleAtFixedRate(this::logInfo, statsInterval, statsInterval, TimeUnit.SECONDS);
   }
 
-  private void scheduleSet(int workerId, int operationNum) {
-    scheduleOperation(
-        workerId,
-        operationNum,
-        key -> client.set(CACHE_NAME, key, cacheValue),
-        (response, operationNumValue) -> {
-          if (response instanceof SetResponse.Success) {
-            globalSuccessCount.increment();
-          } else if (response instanceof SetResponse.Error error) {
-            handleErrorResponse(error.getErrorCode());
-          }
-          scheduleGet(workerId, operationNumValue);
-        },
-        setHistogram);
+  private List<ScheduledFuture<SetResponse>> initializeKeys() {
+    logger.info("Initializing hot keys");
+    Stream<ScheduledFuture<SetResponse>> hotkeyFutures = hotKeys.stream().map(key ->
+            executorService.schedule(() -> {
+                      logger.info("Hotkeys: Acquire rate limiter");
+                      rateLimiter.acquire();
+                      logger.info("Hotkeys: Acquired rate limiter");
+                      logger.info("Initializing hot key: " + key);
+                      SetResponse setResult = client.set(CACHE_NAME, key, cacheValue).join();
+                      if (!(setResult instanceof SetResponse.Success)) {
+                        logger.error("THROWING EXCEPTION!");
+                        throw new RuntimeException("Failed to initialize hot key: " + key);
+                      }
+                      logger.info("Initialized hot key: " + key);
+                      return setResult;
+                    },
+                    0, TimeUnit.MILLISECONDS));
+
+    Stream<ScheduledFuture<SetResponse>> regularKeyFutures = IntStream.range(1, NUM_REGULAR_KEYS + 1).mapToObj(i ->
+            executorService.schedule(() -> {
+              logger.info("Regular keys: Acquire rate limiter");
+              rateLimiter.acquire();
+              logger.info("Regular keys: Acquired rate limiter");
+              final String key = "regularKey" + i;
+              logger.info("Initializing regular key: " + key);
+              SetResponse setResult = client.set(CACHE_NAME, key, cacheValue).join();
+              if (!(setResult instanceof SetResponse.Success)) {
+                logger.error("THROWING EXCEPTION!");
+                throw new RuntimeException("Failed to initialize hot key: " + key);
+              }
+              logger.info("Initialized hot key: " + key);
+              return setResult;
+            }, 0, TimeUnit.MILLISECONDS));
+
+    return Stream.concat(hotkeyFutures, regularKeyFutures).toList();
   }
 
-  private void scheduleGet(int workerId, int operationNum) {
+
+  private void scheduleSet(int workerId, int operationNum) {
+    final String keyForOperation = chooseKey();
+    boolean shouldExecuteSet = determineIfWeShouldExecuteASet();
+    if (shouldExecuteSet) {
+      scheduleOperation(
+              workerId,
+              operationNum,
+              keyForOperation,
+              key -> client.set(CACHE_NAME, key, cacheValue),
+              (response, operationNumValue) -> {
+                if (response instanceof SetResponse.Success) {
+                  globalSuccessCount.increment();
+                } else if (response instanceof SetResponse.Error error) {
+                  handleErrorResponse(error.getErrorCode());
+                }
+                scheduleGet(workerId, operationNumValue, keyForOperation);
+              },
+              setHistogram);
+    } else {
+      scheduleGet(workerId, operationNum, keyForOperation);
+    }
+  }
+
+  private String chooseKey() {
+    final int randomInt = ThreadLocalRandom.current().nextInt(100);
+    if (randomInt < PERCENT_OF_OPERATIONS_THAT_SHOULD_CHOOSE_A_HOT_KEY) {
+      String key = hotKeys.get(ThreadLocalRandom.current().nextInt(NUM_HOT_KEYS));
+      hotKeyReadCounts.get(key).incrementAndGet();
+      return key;
+    } else {
+      otherKeyReadCount.incrementAndGet();
+      return "regularKey" + (ThreadLocalRandom.current().nextInt(NUM_REGULAR_KEYS) + 1);
+    }
+  }
+
+  private boolean determineIfWeShouldExecuteASet() {
+    final int randomInt = ThreadLocalRandom.current().nextInt(100);
+    if (randomInt < PERCENT_OF_OPERATIONS_THAT_SHOULD_EXECUTE_A_SET) {
+      return true;
+    }
+    return false;
+  }
+
+  private void scheduleGet(int workerId, int operationNum, String keyForOperation) {
     final int nextOperationNum = operationNum + 1;
     scheduleOperation(
         workerId,
         operationNum,
+        keyForOperation,
         key -> client.get(CACHE_NAME, key),
         (response, operationNumValue) -> {
-          if (response instanceof GetResponse.Hit || response instanceof GetResponse.Miss) {
+          if (response instanceof GetResponse.Hit) {
+            globalSuccessCount.increment();
+          } else if (response instanceof GetResponse.Miss) {
+            logger.warn("Missed key: " + keyForOperation);
             globalSuccessCount.increment();
           } else if (response instanceof GetResponse.Error error) {
             handleErrorResponse(error.getErrorCode());
@@ -127,10 +246,11 @@ public class LoadGenerator {
   private <T> void scheduleOperation(
       int workerId,
       int operationNum,
+      String key,
       Function<String, CompletableFuture<T>> operation,
       BiConsumer<T, Integer> responseHandler,
       ConcurrentHistogram histogram) {
-    final String key = "worker" + workerId + "operation" + operationNum;
+//    final String key = "worker" + workerId + "operation" + operationNum;
     executorService.schedule(
         () -> {
           rateLimiter.acquire();
@@ -161,7 +281,7 @@ public class LoadGenerator {
     builder
         .append(
             String.format(
-                "%18s: %d (%.2f) tps, limited to %d tps",
+                "%18s: %d (%.2f tps) (limited to %d tps)",
                 "total requests", requestCount, formatTps(requestCount), requestsPerSecond))
         .append('\n');
 
@@ -213,6 +333,31 @@ public class LoadGenerator {
         + String.format("%5s: %.2f\n", "p99", histogram.getValueAtPercentile(99.0) / 1_000_000.0)
         + String.format("%5s: %.2f\n", "p99.9", histogram.getValueAtPercentile(99.9) / 1_000_000.0)
         + String.format("%5s: %.2f\n", "max", histogram.getMaxValue() / 1_000_000.0);
+  }
+
+  private <T> void awaitFutures(List<ScheduledFuture<T>> futures) {
+    futures.forEach(future -> {
+      try {
+        logger.info("Waiting for initializeKeyFuture");
+        future.get(20, TimeUnit.SECONDS);
+      } catch (InterruptedException | ExecutionException | TimeoutException e) {
+        throw new RuntimeException(e);
+      }
+    });
+  }
+
+  private void logKeyCounts() {
+    StringBuilder output = new StringBuilder();
+    output.append("\n");
+    output.append("Number of hot keys created: " + NUM_HOT_KEYS + "\n");
+    output.append("Number of regular keys created: " + NUM_REGULAR_KEYS + "\n");
+    output.append("Percentage of operations that should execute a set as well as a get: " + PERCENT_OF_OPERATIONS_THAT_SHOULD_EXECUTE_A_SET + "%\n");
+    output.append("Percentage of operations that should only execute a get: " + (100 - PERCENT_OF_OPERATIONS_THAT_SHOULD_EXECUTE_A_SET) + "%\n");
+    output.append("Percentage of operations that should choose a hot key: " + PERCENT_OF_OPERATIONS_THAT_SHOULD_CHOOSE_A_HOT_KEY + "%\n");
+    output.append("Hot key counts:\n");
+    hotKeyReadCounts.forEach((key, count) -> output.append(key + ": " + count.get() + "\n"));
+    output.append("Other key count: " + otherKeyReadCount.get() + "\n");
+    logger.info(output.toString());
   }
 
   @SuppressWarnings("ResultOfMethodCallIgnored")
@@ -270,10 +415,13 @@ public class LoadGenerator {
             warmupTimeSeconds);
 
     // Wait for the desired time
-    Thread.sleep(howLongToRunSeconds * 1000);
+    loadGenerator.await(howLongToRunSeconds * 1000);
+    logger.info("Run complete! shutting down");
 
     loadGenerator.shutdown();
 
     Thread.sleep(5000);
+
+    loadGenerator.logKeyCounts();
   }
 }

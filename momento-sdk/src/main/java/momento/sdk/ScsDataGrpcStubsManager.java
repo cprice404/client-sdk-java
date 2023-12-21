@@ -37,6 +37,7 @@ final class ScsDataGrpcStubsManager implements AutoCloseable {
   private final Duration deadline;
   private final ScheduledExecutorService retryScheduler;
   private final ExecutorService retryExecutor;
+  private final ExecutorService requestExecutor;
 
   // An arbitary selection of twice the number of available processors.
   private static final int MAX_RETRY_THREAD_POOL_SIZE = 64;
@@ -79,6 +80,8 @@ final class ScsDataGrpcStubsManager implements AutoCloseable {
             RETRY_THREAD_POOL_KEEP_ALIVE_SECONDS,
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<>());
+
+    this.requestExecutor = Executors.newFixedThreadPool(100);
 
     this.channel = setupChannel(credentialProvider, configuration);
     this.futureStub = ScsGrpc.newFutureStub(channel);
@@ -162,6 +165,9 @@ final class ScsDataGrpcStubsManager implements AutoCloseable {
             configuration.getRetryStrategy(), retryScheduler, retryExecutor));
     channelBuilder.intercept(clientInterceptors);
 
+    LOGGER.info("SETTING EXPLICIT REQUEST EXECUTOR");
+    channelBuilder.executor(requestExecutor);
+
     return channelBuilder.build();
   }
 
@@ -183,6 +189,7 @@ final class ScsDataGrpcStubsManager implements AutoCloseable {
   public void close() {
     retryScheduler.shutdown();
     retryExecutor.shutdown();
+    requestExecutor.shutdown();
     channel.shutdown();
   }
 }

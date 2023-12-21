@@ -169,7 +169,7 @@ public class LoadGenerator {
               SetResponse setResult = client.set(CACHE_NAME, key, cacheValue).join();
               if (!(setResult instanceof SetResponse.Success)) {
                 logger.error("THROWING EXCEPTION!");
-                throw new RuntimeException("Failed to initialize hot key: " + key);
+                throw new RuntimeException("Failed to initialize regular key: " + key);
               }
               logger.info("Initialized hot key: " + key);
               return setResult;
@@ -396,7 +396,7 @@ public class LoadGenerator {
     // so if you raise this, you may observe throttled requests. Contact
     // support@momentohq.com to inquire about raising your limits.
     //
-    final int maxRequestsPerSecond = 20_000;
+    final int maxRequestsPerSecond = 1_000;
     //
     // Controls how long the load test will run.
     //

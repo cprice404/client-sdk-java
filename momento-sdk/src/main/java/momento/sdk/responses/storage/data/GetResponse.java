@@ -2,91 +2,121 @@ package momento.sdk.responses.storage.data;
 
 import java.util.Optional;
 import momento.sdk.exceptions.ClientSdkException;
-import momento.sdk.exceptions.NotFoundException;
 import momento.sdk.exceptions.SdkException;
+
 
 /** Response for a get operation */
 public interface GetResponse {
-  /**
-   * Get the value as a byte array. If the value is not a byte array, an exception will be thrown.
-   * If the value is not present, an empty optional will be returned.
-   *
-   * @return the value as a byte array.
-   */
-  Optional<byte[]> tryValueByteArray();
-
-  /**
-   * Get the value as a string. If the value is not a string, an exception will be thrown. If the
-   * value is not present, an empty optional will be returned.
-   *
-   * @return the value as a string.
-   */
-  Optional<String> tryValueString();
-
-  /**
-   * Get the value as a long. If the value is not a long, an exception will be thrown. If the value
-   * is not present, an empty optional will be returned.
-   *
-   * @return the value as a long.
-   */
-  Optional<Long> tryValueLong();
-
-  /**
-   * Get the value as a double. If the value is not a double, an exception will be thrown. If the
-   * value is not present, an empty optional will be returned.
-   *
-   * @return the value as a double.
-   */
-  Optional<Double> tryValueDouble();
+//  /**
+//   * Get the value as a byte array. If the value is not a byte array, an exception will be thrown.
+//   * If the value is not present, an empty optional will be returned.
+//   *
+//   * @return the value as a byte array.
+//   */
+//  Optional<byte[]> tryValueByteArray();
+//
+//  /**
+//   * Get the value as a string. If the value is not a string, an exception will be thrown. If the
+//   * value is not present, an empty optional will be returned.
+//   *
+//   * @return the value as a string.
+//   */
+//  Optional<String> tryValueString();
+//
+//  /**
+//   * Get the value as a long. If the value is not a long, an exception will be thrown. If the value
+//   * is not present, an empty optional will be returned.
+//   *
+//   * @return the value as a long.
+//   */
+//  Optional<Long> tryValueLong();
+//
+//  /**
+//   * Get the value as a double. If the value is not a double, an exception will be thrown. If the
+//   * value is not present, an empty optional will be returned.
+//   *
+//   * @return the value as a double.
+//   */
+//  Optional<Double> tryValueDouble();
+  Optional<MomentoStorageValue> tryValue();
 
   /** A successful get operation. */
   class Success implements GetResponse {
-    private final Object value;
-    private final ValueType valueType;
+    private final MomentoStorageValue value;
+//    private final ValueType valueType;
+//
+//    private Success(Object value, ValueType valueType) {
+//      this.value = value;
+//      this.valueType = valueType;
+//    }
 
-    private Success(Object value, ValueType valueType) {
+    private Success(MomentoStorageValue value) {
       this.value = value;
-      this.valueType = valueType;
     }
+//
+//    public static Success of(byte[] value) {
+//      return new Success(value, ValueType.BYTE_ARRAY);
+//    }
+//
+//    public static Success of(String value) {
+//      return new Success(value, ValueType.STRING);
+//    }
+//
+//    public static Success of(long value) {
+//      return new Success(value, ValueType.LONG);
+//    }
+//
+//    public static Success of(double value) {
+//      return new Success(value, ValueType.DOUBLE);
+//    }
 
     public static Success of(byte[] value) {
-      return new Success(value, ValueType.BYTE_ARRAY);
+        return new Success(MomentoStorageValue.of(value));
     }
 
     public static Success of(String value) {
-      return new Success(value, ValueType.STRING);
+        return new Success(MomentoStorageValue.of(value));
     }
 
     public static Success of(long value) {
-      return new Success(value, ValueType.LONG);
+        return new Success(MomentoStorageValue.of(value));
     }
 
     public static Success of(double value) {
-      return new Success(value, ValueType.DOUBLE);
+        return new Success(MomentoStorageValue.of(value));
     }
 
-    public ValueType getType() {
-      return valueType;
-    }
+      @Override
+      public Optional<MomentoStorageValue> tryValue() {
+          return Optional.of(value);
+      }
 
-    public byte[] valueByteArray() {
-      ensureCorrectTypeOrThrowException(ValueType.BYTE_ARRAY, valueType);
-      return (byte[]) value;
-    }
-
-    public String valueString() {
-      ensureCorrectTypeOrThrowException(ValueType.STRING, valueType);
-      return (String) value;
-    }
-
-    public long valueLong() {
-      ensureCorrectTypeOrThrowException(ValueType.LONG, valueType);
-      return (long) value;
-    }
-
-    public double valueDouble() {
-      ensureCorrectTypeOrThrowException(ValueType.DOUBLE, valueType);
-      return (double) value;
+      //
+//    public ValueType getType() {
+//      return valueType;
+//    }
+//
+//    public byte[] valueByteArray() {
+//      ensureCorrectTypeOrThrowException(ValueType.BYTE_ARRAY, valueType);
+//      return (byte[]) value;
+//    }
+//
+//    public String valueString() {
+//      ensureCorrectTypeOrThrowException(ValueType.STRING, valueType);
+//      return (String) value;
+//    }
+//
+//    public long valueLong() {
+//      ensureCorrectTypeOrThrowException(ValueType.LONG, valueType);
+//      return (long) value;
+//    }
+//
+//    public double valueDouble() {
+//      ensureCorrectTypeOrThrowException(ValueType.DOUBLE, valueType);
+//      return (double) value;
+//    }
+    public MomentoStorageValue value() {
+      return value;
     }
 
     private void ensureCorrectTypeOrThrowException(ValueType requested, ValueType actual) {
@@ -98,26 +128,26 @@ public interface GetResponse {
                 "Value is not a %s but was: %s".format(requested.toString(), actual.toString())));
       }
     }
-
-    @Override
-    public Optional<byte[]> tryValueByteArray() {
-      return Optional.of(valueByteArray());
-    }
-
-    @Override
-    public Optional<String> tryValueString() {
-      return Optional.of(valueString());
-    }
-
-    @Override
-    public Optional<Long> tryValueLong() {
-      return Optional.of(valueLong());
-    }
-
-    @Override
-    public Optional<Double> tryValueDouble() {
-      return Optional.of(valueDouble());
-    }
+//
+//    @Override
+//    public Optional<byte[]> tryValueByteArray() {
+//      return Optional.of(valueByteArray());
+//    }
+//
+//    @Override
+//    public Optional<String> tryValueString() {
+//      return Optional.of(valueString());
+//    }
+//
+//    @Override
+//    public Optional<Long> tryValueLong() {
+//      return Optional.of(valueLong());
+//    }
+//
+//    @Override
+//    public Optional<Double> tryValueDouble() {
+//      return Optional.of(valueDouble());
+//    }
   }
 
   /**
@@ -136,33 +166,39 @@ public interface GetResponse {
       super(cause);
     }
 
-    private <T> Optional<T> tryValue() {
-      // TODO distinguish store not found vs key not found
-      if (getCause() instanceof NotFoundException) {
-        return Optional.empty();
-      } else {
-        throw this;
-      }
+    @Override
+    public Optional<MomentoStorageValue> tryValue() {
+      return Optional.empty();
     }
 
-    @Override
-    public Optional<byte[]> tryValueByteArray() {
-      return tryValue();
-    }
-
-    @Override
-    public Optional<String> tryValueString() {
-      return tryValue();
-    }
-
-    @Override
-    public Optional<Long> tryValueLong() {
-      return tryValue();
-    }
-
-    @Override
-    public Optional<Double> tryValueDouble() {
-      return tryValue();
-    }
+    //
+//    private <T> Optional<T> tryValue() {
+//      // TODO distinguish store not found vs key not found
+//      if (getCause() instanceof NotFoundException) {
+//        return Optional.empty();
+//      } else {
+//        throw this;
+//      }
+//    }
+//
+//    @Override
+//    public Optional<byte[]> tryValueByteArray() {
+//      return tryValue();
+//    }
+//
+//    @Override
+//    public Optional<String> tryValueString() {
+//      return tryValue();
+//    }
+//
+//    @Override
+//    public Optional<Long> tryValueLong() {
+//      return tryValue();
+//    }
+//
+//    @Override
+//    public Optional<Double> tryValueDouble() {
+//      return tryValue();
+//    }
   }
 }

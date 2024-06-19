@@ -29,6 +29,8 @@ dependencies {
 
     // Use JUnit Jupiter for testing.
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
+
+    implementation("software.amazon.awssdk:dynamodb:2.26.5")
 }
 
 spotless {

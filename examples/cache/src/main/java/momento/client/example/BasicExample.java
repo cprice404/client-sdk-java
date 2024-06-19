@@ -1,15 +1,23 @@
 package momento.client.example;
 
 import java.time.Duration;
+import java.util.Map;
+
 import momento.sdk.CacheClient;
+import momento.sdk.PreviewStorageClient;
 import momento.sdk.auth.CredentialProvider;
 import momento.sdk.auth.EnvVarCredentialProvider;
 import momento.sdk.config.Configurations;
+import momento.sdk.config.StorageConfigurations;
 import momento.sdk.exceptions.AlreadyExistsException;
-import momento.sdk.responses.cache.GetResponse;
 import momento.sdk.responses.cache.control.CacheCreateResponse;
 import momento.sdk.responses.cache.control.CacheInfo;
 import momento.sdk.responses.cache.control.CacheListResponse;
+import momento.sdk.responses.storage.data.GetResponse;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.*;
 
 public class BasicExample {
 
@@ -21,34 +29,69 @@ public class BasicExample {
   private static final String VALUE = "value";
 
   public static void main(String[] args) {
-    printStartBanner();
+//    printStartBanner();
+
+    DynamoDbClient dynamoDbClient = DynamoDbClient.builder()
+            .region(Region.US_WEST_2)
+            .build();
+
+    var tableName = "DELETEME-ddbtest";
+
+    dynamoDbClient.putItem(PutItemRequest.builder()
+                    .tableName(tableName)
+                    .item(Map.of(
+                            "id", AttributeValue.builder().s("1").build(),
+                            "number", AttributeValue.builder().n("42").build(),
+                            "bytes", AttributeValue.builder().b(SdkBytes.fromByteArray(
+                                    new byte[]{42, 90, 21, 0}
+                            )).build()
+                    ))
+                    .build());
+
+    System.out.println("Table created and item added");
+
+    var getItemResponse = dynamoDbClient.getItem(GetItemRequest.builder()
+            .tableName(tableName)
+            .key(Map.of(
+                    "id", AttributeValue.builder().s("1").build()
+            ))
+            .build());
+
+    System.out.println("Get item response: " + getItemResponse);
+    var number = getItemResponse.item().get("number").n();
+    System.out.println("Number: " + number);
+    var numberBytes = getItemResponse.item().get("number").b();
+    System.out.println("Number bytes: " + numberBytes);
+
+    var nonExistingItemResponse = dynamoDbClient.getItem(GetItemRequest.builder()
+            .tableName(tableName)
+            .key(Map.of(
+                    "id", AttributeValue.builder().s("2").build()
+            ))
+            .build());
+    System.out.println("Non-existing item response: " + nonExistingItemResponse);
+    var nonExistingItem = nonExistingItemResponse.item();
+    System.out.println("Non-existing item: " + nonExistingItem);
+
+    try {
+      var nonExistingItemNumberAsString = nonExistingItemResponse.item().get("number").s();
+      System.out.println("Non-existing item number as string: " + nonExistingItemNumberAsString);
+    } catch (NullPointerException e) {
+        System.out.println("NPE trying to dereference non-existing item");
+    }
 
     final CredentialProvider credentialProvider = new EnvVarCredentialProvider(API_KEY_ENV_VAR);
-
-    try (final CacheClient client =
-        CacheClient.create(credentialProvider, Configurations.Laptop.latest(), DEFAULT_ITEM_TTL)) {
-
-      createCache(client, CACHE_NAME);
-
-      listCaches(client);
-
-      System.out.printf("Setting key '%s', value '%s'%n", KEY, VALUE);
-      client.set(CACHE_NAME, KEY, VALUE).join();
-
-      System.out.printf("Getting value for key '%s'%n", KEY);
-
-      final GetResponse getResponse = client.get(CACHE_NAME, KEY).join();
-      if (getResponse instanceof GetResponse.Hit hit) {
-        System.out.printf("Found value for key '%s': '%s'%n", KEY, hit.valueString());
-      } else if (getResponse instanceof GetResponse.Miss) {
-        System.out.println("Found no value for key " + KEY);
-      } else if (getResponse instanceof GetResponse.Error error) {
-        System.out.printf(
-            "Unable to look up value for key '%s' with error %s\n", KEY, error.getErrorCode());
-        System.out.println(error.getMessage());
-      }
+    var storageClient = new PreviewStorageClient(credentialProvider, StorageConfigurations.Laptop.latest());
+    var storeName = "store";
+    storageClient.createStore(storeName).join();
+    storageClient.put(storeName, "stringKey", "stringValue").join();
+    var stringGetResponse = storageClient.get(storeName, "stringKey").join();
+    var stringGetTryValue = stringGetResponse.tryValue().get().getString();
+//    stringGetResponse.
+    System.out.println("String get tryValue: " + stringGetTryValue);
+    if (stringGetResponse instanceof GetResponse.Success stringGetSuccess) {
+      System.out.println("String get success: " + stringGetSuccess.value().getString());
     }
-    printEndBanner();
   }
 
   private static void createCache(CacheClient cacheClient, String cacheName) {
